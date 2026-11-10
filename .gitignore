@@ -1,0 +1,19 @@
+# 비밀 값: 절대 올리지 않아요
+.env
+.streamlit/secrets.toml
+
+# 환자 데이터·실행 중 생기는 파일
+shared/
+seen_events.json
+
+# 개발 환경과 배포용 임시 폴더
+venv/
+__pycache__/
+deploy_upload/
+
+# 배포에 필요 없는 파일
+*.mp3
+*_preview.png
+image_preview.png
+app_v1.py
+config.toml
