@@ -25,6 +25,9 @@ st.markdown("""<style>
 .stat-grid div{background:#fff;border:1px solid #E2E8F3;border-radius:12px;padding:10px 12px;}
 .stat-grid span{display:block;font-size:.72rem;color:#64748B;font-weight:700;}
 .stat-grid b{font-size:1.25rem;color:#0F172A;}
+[data-baseweb="input"]{border:1px solid #C7D2E5 !important;border-radius:8px !important;background:#fff !important;
+  box-shadow:0 1px 2px rgba(15,23,42,.06);}
+[data-baseweb="input"]:focus-within{border-color:#4F6BD3 !important;}
 </style>""", unsafe_allow_html=True)
 
 st.markdown("## 🛠️ 관리자")
