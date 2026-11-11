@@ -22,6 +22,8 @@ import anthropic
 import edge_tts
 from PIL import Image
 
+from maeumi_common import load_settings
+
 # ============ 기본 설정 ============
 load_dotenv()
 MODEL = "claude-sonnet-5-5"        # 마음이 대화용
@@ -318,6 +320,12 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 st.markdown("<style>" + APP_CSS + "</style>", unsafe_allow_html=True)
+
+# 관리자 페이지(/admin)의 시연 설정: 사이드바 시연 도구는 다른 환자 기록이 보이므로 기본으로 숨겨요
+APP_SETTINGS = load_settings()
+if not APP_SETTINGS["patient_tools"]:
+    st.markdown("<style>[data-testid='stSidebar'], [data-testid='stSidebarCollapsedControl'], "
+                "[data-testid='stExpandSidebarButton']{display:none !important;}</style>", unsafe_allow_html=True)
 
 THEME_TOML = """[theme]
 base = "light"
@@ -1571,8 +1579,8 @@ if "pending_book" not in st.session_state:
     st.session_state.pending_book = False
 if "sound_on" not in st.session_state:
     st.session_state.sound_on = True
-if "show_dev" not in st.session_state:
-    st.session_state.show_dev = True
+if not APP_SETTINGS["patient_tools"] or "show_dev" not in st.session_state:
+    st.session_state.show_dev = APP_SETTINGS["show_risk_debug"]      # 도구가 숨겨져 있으면 관리자 설정을 그대로 따라요
 if "settings_msg" not in st.session_state:
     st.session_state.settings_msg = None
 if "esc_threshold" not in st.session_state:

@@ -1,7 +1,6 @@
 from collections import defaultdict
 from datetime import datetime, date, timedelta
 import calendar as pycal
-import hmac
 import html
 import json
 import math
@@ -11,6 +10,8 @@ import uuid
 import numpy as np
 import pandas as pd
 import streamlit as st
+
+from maeumi_common import MOD_LABEL, load_settings
 
 st.set_page_config(
     page_title="MDD Clinical Decision Support System",
@@ -141,6 +142,14 @@ header[data-testid="stHeader"]{background:transparent;}
 .perf th:first-child, .perf td:first-child{text-align:left;}
 .perf td{text-align:right;padding:6px 4px;border-bottom:1px solid #EEF2F8;color:#334155;font-feature-settings:"tnum";}
 .perf tr.hl td{font-weight:800;color:var(--text);background:#F6F8FD;}
+.perf tr.avg td{font-weight:700;color:#2F3F8F;background:#EEF2FF;}
+.drow b.mono{white-space:nowrap;}
+.st-key-fusion_mods button[aria-pressed="true"]{background:var(--primary) !important;border-color:var(--primary) !important;}
+.st-key-fusion_mods button[aria-pressed="true"] *{color:#fff !important;}
+.st-key-fusion_mods button[aria-pressed="false"]{background:#fff !important;border-style:dashed !important;}
+.st-key-fusion_mods button[aria-pressed="false"] *{color:#94A3B8 !important;}
+.case-nav{display:flex;align-items:center;justify-content:center;gap:10px;height:40px;background:#fff;
+  border:1px solid var(--line);border-radius:10px;font-size:.95rem;}
 .foot{font-size:.68rem;color:#94A3B8;margin-top:6px;}
 .stack{display:flex;height:14px;border-radius:999px;overflow:hidden;background:#EEF2FA;margin:6px 0 8px;}
 .stack span{display:block;height:100%;}
@@ -188,32 +197,40 @@ if st.get_option("theme.base") != "light" or st.session_state.get("theme_pending
 
 
 # =====================================================================
-# 의료진 로그인: DOCTOR_PASSWORD(Streamlit secrets 또는 환경변수)가 설정돼 있으면 비밀번호를 물어봐요.
-# 공개 링크로 배포할 때는 반드시 설정하세요. 설정하지 않으면(내 PC 실행) 바로 열려요.
+# 의료진 로그인 화면 (시연용): 실제 진료 시스템처럼 보이되, ID·비밀번호가 미리 입력돼 있어 '로그인'만 누르면 들어가요.
+# 표시 내용과 켜기/끄기는 관리자 페이지(/admin)의 시연 설정에서 바꿔요. 실제 인증은 하지 않아요.
 # =====================================================================
-def _doctor_password():
-    try:
-        value = st.secrets.get("DOCTOR_PASSWORD")
-    except Exception:
-        value = None
-    return value or os.environ.get("DOCTOR_PASSWORD")
-
-
-_DOCTOR_PW = _doctor_password()
-if _DOCTOR_PW and not st.session_state.get("doctor_ok"):
-    _l, _c, _r = st.columns([1, 1.2, 1])
+SETTINGS = load_settings()
+if SETTINGS["doctor_login"] and not st.session_state.get("doctor_ok"):
+    st.markdown("""<style>
+    .login-brand{display:flex;align-items:center;gap:12px;margin-bottom:6px;}
+    .login-logo{width:46px;height:46px;border-radius:12px;background:linear-gradient(135deg,#4F6BD3,#2F3F8F);
+      color:#fff;display:flex;align-items:center;justify-content:center;font-size:1.4rem;}
+    .login-title{font-weight:800;font-size:1.25rem;color:#0F172A;line-height:1.2;}
+    .login-sub{font-size:.8rem;color:#64748B;}
+    .login-foot{font-size:.72rem;color:#94A3B8;margin-top:10px;text-align:center;}
+    </style>""", unsafe_allow_html=True)
+    st.markdown("<div style='height:6vh'></div>", unsafe_allow_html=True)
+    _l, _c, _r = st.columns([1, 1.1, 1])
     with _c:
         with st.container(key="card_login"):
-            md_login = "<div class='card-label'>MDD CLINICAL DECISION SUPPORT</div><div style='font-weight:800;font-size:1.2rem;'>의료진 로그인</div>"
-            st.markdown(md_login, unsafe_allow_html=True)
+            st.markdown("<div class='login-brand'><div class='login-logo'>🩺</div><div>"
+                        "<div class='login-title'>마음이 CDSS</div>"
+                        f"<div class='login-sub'>{html.escape(SETTINGS['doctor_dept'])} 임상 의사결정 지원 시스템</div></div></div>",
+                        unsafe_allow_html=True)
             with st.form("doctor_login"):
-                _entered = st.text_input("의료진 비밀번호", type="password")
-                if st.form_submit_button("입장", type="primary", use_container_width=True):
-                    if hmac.compare_digest(_entered.encode("utf-8"), str(_DOCTOR_PW).encode("utf-8")):
-                        st.session_state.doctor_ok = True
-                        st.rerun()
-                    st.error("비밀번호가 맞지 않습니다.")
+                st.text_input("의료진 ID", value=SETTINGS["doctor_id"])
+                st.text_input("비밀번호", value="demo-password", type="password")
+                if st.form_submit_button("로그인", type="primary", use_container_width=True):
+                    st.session_state.doctor_ok = True
+                    st.rerun()
+            st.markdown("<div class='login-foot'>시연용 계정이 입력되어 있습니다 · 로그인을 눌러 주세요</div>",
+                        unsafe_allow_html=True)
     st.stop()
+
+
+def logout():
+    st.session_state.doctor_ok = False
 
 # =====================================================================
 # [연동] 환자용 플랫폼(마음이)과 공유하는 폴더
@@ -372,7 +389,7 @@ def score_modality(mid, values):
     prob = round(logit_to_pct(logit), 1)
     order = np.argsort(-np.abs(contrib))
     top = [(mdl["labels"][i], float(contrib[i])) for i in order]
-    details = [(lab, f"{'MDD' if c >= 0 else '대조'} 쪽 {abs(c):.2f}") for lab, c in top[:3]]
+    details = [(lab, f"{'MDD' if c >= 0 else '건강대조군'} 쪽 {abs(c):.2f}") for lab, c in top[:3]]
     outside = int((range_z > 4).sum())
     perf = m.get("perf")
     if m["tier"] == "simulation":
@@ -454,7 +471,7 @@ FUSION_BANDS = [(0, 40, "#DCF1EE"), (40, 65, "#FDF0D0"), (65, 100, "#FBE3E4")]
 def quad_html(name, p, details, ready=True, note=""):
     if ready:
         danger = p >= 50
-        chip = f"<span class='chip chip-{'danger' if danger else 'ok'}'>{'MDD 패턴 우세' if danger else '대조군 패턴 우세'}</span>"
+        chip = f"<span class='chip chip-{'danger' if danger else 'ok'}'>{'MDD 유사 패턴' if danger else '건강대조군 유사 패턴'}</span>"
         color = "#E5484D" if danger else "#2F9E8F"
         rows = "".join(f"<div class='drow'><span>{esc(k)}</span>{detail_val(v)}</div>" for k, v in details)
     else:
@@ -481,7 +498,7 @@ def fmt_q(row):
 def evidence_html(mid):
     """지표별 MDD 연관성(상관 r, 효과크기 d, FDR q)과 자료의 한계를 보여주는 패널"""
     m = MODS[mid]
-    n = f"MDD {m['n_mdd']} · 대조 {m['n_control']}" if m.get("n_mdd") else "표본 수 미기재"
+    n = f"MDD {m['n_mdd']} · 건강대조군 {m['n_control']}" if m.get("n_mdd") else "표본 수 미기재"
     row = lambda a, cls="": (f"<tr class='{cls}'><td>{esc(a['label'])}</td><td>{a['r']:+.2f}</td><td>{a['d']:+.2f}</td><td>{fmt_q(a)}</td></tr>")
     rows = "".join(row(a) for a in m["associations"][:5])
     rows += "".join(row(a, "hl") for a in m.get("summary_markers", []) if a["feature"] in ("alpha_beta", "faa"))
@@ -789,6 +806,15 @@ main_col, right_col = st.columns([7.8, 2.2])
 
 # ------------------------- 우측 패널 -------------------------
 with right_col:
+    # 로그인한 의료진 (시연용 계정)
+    with card("account"):
+        a1, a2 = st.columns([4, 1.3])
+        a1.markdown(f"<div class='card-label' style='margin:0'>{esc(SETTINGS['doctor_dept'])}</div>"
+                    f"<div style='font-weight:800;color:#0F172A;'>{esc(SETTINGS['doctor_name'])} 선생님</div>"
+                    f"<div class='panel-sub'>ID {esc(SETTINGS['doctor_id'])}</div>", unsafe_allow_html=True)
+        if SETTINGS["doctor_login"]:
+            a2.button("", key="logout", on_click=logout, width="stretch", icon=":material/logout:", help="로그아웃")
+
     # 0) 환자 목록: 환자 앱을 사용한 모든 환자 중 한 명을 골라 살펴봐요
     with card("patients"):
         md(f"<div class='card-label'>환자 목록 · {len(PATIENTS)}명</div>")
@@ -876,14 +902,12 @@ with right_col:
         md("<div class='card-label'>환자 데이터 업로드</div>")
         uploaded_file = st.file_uploader("환자 파일 업로드", type=["csv", "xlsx"], label_visibility="collapsed",
                                          key=f"upload_{linked_pid}")     # 환자를 바꾸면 업로드도 새로 시작
-        include_sim = st.toggle("시뮬레이션 코르티솔을 통합에 포함", value=False, key="include_sim")
-        demo_cols = st.columns(2)
-        for demo_col, demo_name, demo_label in ((demo_cols[0], "demo_patient_mdd_pattern.csv", "MDD 예시"),
-                                                (demo_cols[1], "demo_patient_control_pattern.csv", "대조 예시")):
-            demo_path = os.path.join(DEMO_DIR, demo_name)
-            if os.path.exists(demo_path):
-                with open(demo_path, "rb") as demo_file:
-                    demo_col.download_button(demo_label, demo_file.read(), file_name=demo_name, mime="text/csv", width="stretch")
+        md("<div class='req-empty'>한 행이 한 사례예요. 여러 행을 올리면 사례를 넘겨 보며 비교할 수 있어요.</div>")
+        demo_path = os.path.join(DEMO_DIR, "demo_cases.csv")
+        if os.path.exists(demo_path):
+            with open(demo_path, "rb") as demo_file:
+                st.download_button("시연 사례 파일 (MDD 3 · 건강대조군 3)", demo_file.read(), file_name="demo_cases.csv",
+                                   mime="text/csv", width="stretch", icon=":material/download:")
 
 # ------------------------- 메인: 분석 데이터 -------------------------
 patient_df, upload_failed = None, False
@@ -894,28 +918,70 @@ if uploaded_file is not None:
     except Exception:
         patient_df, upload_failed = None, True
 
-# 모델에 필요한 값이 모두 있는 모달리티만 계산해요. 빠진 값은 임의로 채우지 않아요.
-results, missing_by_mod = {}, {}
-patient_vals = patient_values(patient_df) if patient_df is not None and not patient_df.empty else {}
-for mid in MOD_ORDER:
-    res, miss = score_modality(mid, patient_vals)
-    if res:
-        results[mid] = res
-    else:
-        missing_by_mod[mid] = miss
+
+def case_info(df, i):
+    """i번째 행의 사례 이름과 구분 (선택 컬럼: 사례명/case_name, 구분/group)"""
+    row = df.iloc[i]
+    get = lambda *cols: next((str(row[c]).strip() for c in cols if c in df.columns and pd.notna(row[c]) and str(row[c]).strip()), "")
+    return get("사례명", "case_name", "name") or f"사례 {i + 1}", get("구분", "group", "label")
+
+
+def score_case(df, i):
+    """i번째 사례를 4개 모달리티로 계산해요. 필요한 값이 빠진 모달리티는 계산하지 않아요(임의로 채우지 않음)."""
+    vals = patient_values(df.iloc[[i]].reset_index(drop=True))
+    res_, miss_ = {}, {}
+    for mid in MOD_ORDER:
+        r_, m_ = score_modality(mid, vals)
+        if r_:
+            res_[mid] = r_
+        else:
+            miss_[mid] = m_
+    return res_, miss_
+
+
+def fusion_score(res_, mods):
+    """통합 규칙: 선택한 검사 로짓의 동일 가중 평균 (같은 환자의 4종 자료가 없어 가중치를 학습할 수 없어요)"""
+    used = [res_[m] for m in MOD_ORDER if m in res_ and m in mods]
+    if not used:
+        return None, []
+    return int(round(logit_to_pct(sum(r["logit"] for r in used) / len(used)))), used
+
+
+# 통합에 포함할 검사 (기본값은 관리자 설정, 4개 모두). 버튼은 AI FUSION 카드에 있어요.
+if "fusion_mods" not in st.session_state:
+    st.session_state.fusion_mods = [m for m in SETTINGS["fusion_default"] if m in MOD_ORDER]
+fusion_mods = st.session_state.fusion_mods or []
+
+# 여러 행 = 여러 사례. 넘기기 버튼으로 보고 있는 사례를 바꿔요.
+n_cases = len(patient_df) if patient_df is not None else 0
+upload_sig = f"{getattr(uploaded_file, 'name', '')}:{getattr(uploaded_file, 'size', '')}:{n_cases}"
+if st.session_state.get("upload_sig") != upload_sig:
+    st.session_state.upload_sig = upload_sig
+    st.session_state.case_idx = 0
+case_idx = min(st.session_state.get("case_idx", 0), max(n_cases - 1, 0))
+
+
+def move_case(step):
+    st.session_state.case_idx = (st.session_state.get("case_idx", 0) + step) % max(n_cases, 1)
+
+
+if n_cases:
+    results, missing_by_mod = score_case(patient_df, case_idx)
+    case_name, case_group = case_info(patient_df, case_idx)
+else:
+    results, missing_by_mod = {}, {m: MODS[m]["model"]["features"] for m in MOD_ORDER}
+    case_name, case_group = "", ""
 ready = bool(results)
-fusion_used = [results[m] for m in MOD_ORDER if m in results and (MODS[m]["tier"] != "simulation" or include_sim)]
+total_risk, fusion_used = fusion_score(results, fusion_mods)
 fusion_ready = bool(fusion_used)
 
 if fusion_ready:
-    # 통합 규칙: 포함된 모달리티 로짓의 동일 가중 평균 (같은 환자의 4종 자료가 없어 가중치를 학습할 수 없어요)
-    total_risk = int(round(logit_to_pct(sum(r["logit"] for r in fusion_used) / len(fusion_used))))
     if total_risk >= 65:
-        fusion_label, fusion_cls, fusion_color = "MDD 관련 패턴 우세", "danger", "#E5484D"
+        fusion_label, fusion_cls, fusion_color = "MDD 유사 패턴 우세", "danger", "#E5484D"
     elif total_risk >= 40:
         fusion_label, fusion_cls, fusion_color = "경계 패턴", "warn", "#F5A524"
     else:
-        fusion_label, fusion_cls, fusion_color = "대조군 패턴 우세", "ok", "#2F9E8F"
+        fusion_label, fusion_cls, fusion_color = "건강대조군 유사 패턴 우세", "ok", "#2F9E8F"
     by_mod = ", ".join(f"{r['name']} {r['prob']:.0f}%" for r in fusion_used)
     pushers = sorted(((lab, c) for r in fusion_used for lab, c in r["top"] if c > 0), key=lambda x: -x[1])[:2]
     driver = (f"MDD 방향으로 가장 크게 기여한 지표는 {', '.join(lab for lab, _ in pushers)}입니다. " if pushers
@@ -932,7 +998,37 @@ with main_col:
        f"<div class='strip-r'>갱신 {now.strftime('%H:%M:%S')}</div></div>")
     if upload_failed:
         st.error("파일을 읽지 못했습니다. CSV 또는 XLSX 형식을 확인해 주세요.")
-    elif patient_df is not None and len(results) < 4:
+
+    # 사례 넘기기 + 전체 사례 비교표 (여러 행을 올렸을 때)
+    if n_cases > 1:
+        p1, p2, p3 = st.columns([1, 6, 1])
+        p1.button(":material/chevron_left:", key="case_prev", on_click=move_case, args=(-1,), width="stretch")
+        p3.button(":material/chevron_right:", key="case_next", on_click=move_case, args=(1,), width="stretch")
+        grp_chip = (f" <span class='chip chip-{'danger' if 'MDD' in case_group.upper() else 'ok'}'>{esc(case_group)}</span>"
+                    if case_group else "")
+        p2.markdown(f"<div class='case-nav'><span class='panel-sub'>사례 {case_idx + 1} / {n_cases}</span> "
+                    f"<b>{esc(case_name)}</b>{grp_chip}</div>", unsafe_allow_html=True)
+        rows_html, by_group = "", defaultdict(list)
+        for i in range(n_cases):
+            res_i, _ = score_case(patient_df, i)
+            nm_i, grp_i = case_info(patient_df, i)
+            fus_i, _ = fusion_score(res_i, fusion_mods)
+            cells = "".join(f"<td>{res_i[m]['prob']:.0f}%</td>" if m in res_i else "<td>-</td>" for m in MOD_ORDER)
+            rows_html += (f"<tr class='{'hl' if i == case_idx else ''}'><td>{esc(nm_i)}</td><td>{esc(grp_i) or '-'}</td>{cells}"
+                          f"<td><b>{'-' if fus_i is None else f'{fus_i}%'}</b></td></tr>")
+            if grp_i:
+                by_group[grp_i].append([res_i[m]["prob"] if m in res_i else np.nan for m in MOD_ORDER] + [np.nan if fus_i is None else fus_i])
+        for grp_name, vals_ in by_group.items():
+            arr_ = np.array(vals_, dtype=float)
+            means = [np.nan if np.isnan(col_).all() else float(np.nanmean(col_)) for col_ in arr_.T]
+            rows_html += (f"<tr class='avg'><td>{esc(grp_name)} 평균</td><td>{len(vals_)}명</td>"
+                          + "".join(f"<td>{'-' if np.isnan(v) else f'{v:.0f}%'}</td>" for v in means) + "</tr>")
+        head = "".join(f"<th>{MOD_LABEL[m]}</th>" for m in MOD_ORDER)
+        with st.expander(f"전체 사례 비교 ({n_cases}건)", expanded=False, icon=":material/compare:"):
+            md(f"<table class='perf'><thead><tr><th>사례</th><th>구분</th>{head}<th>통합</th></tr></thead><tbody>{rows_html}</tbody></table>"
+               f"<div class='foot'>통합 점수는 지금 선택한 검사({', '.join(MOD_LABEL[m] for m in fusion_mods) or '없음'})로 계산해요.</div>")
+
+    if patient_df is not None and len(results) < 4:
         lack = ", ".join(f"{MODS[k]['name']} ({', '.join(v[:3])}{' 외' if len(v) > 3 else ''})" for k, v in missing_by_mod.items())
         st.warning(f"필요한 컬럼이 없어 계산하지 않은 항목이 있습니다: {lack}. 형식은 시연 CSV를 참고해 주세요.")
 
@@ -961,19 +1057,23 @@ with main_col:
                 {svg_radar(["EEG", "Metabolites", "Cytokine", "Cortisol"], radar_vals, [50, 50, 50, 50])}
                 <div class='leg'><span><i style='background:#4F6BD3;height:4px'></i>환자</span>
                 <span><i style='background:#E5484D;height:2px'></i>기준선 50%</span></div>
-                <div class='stat-row'><div class='stat'><span>MDD 패턴 우세</span><b>{n_high} / {len(probs)}</b></div>
+                <div class='stat-row'><div class='stat'><span>MDD 유사 패턴</span><b>{n_high} / {len(probs)}</b></div>
                 <div class='stat'><span>모달리티 평균</span><b>{mean_p:.1f}%</b></div>
                 <div class='stat'><span>모달리티 간 편차 (SD)</span><b>{sd_text}</b></div></div></div>""")
         else:
             md("<div class='panel'><div class='panel-title'>Biomarker Risk Profile</div><div class='empty'>측정 대기 중</div></div>")
     with f2:
         with card("fusion"):
+            md("<div class='card-label'>AI FUSION DIAGNOSIS &amp; PRESCRIPTIONS</div>")
+            st.pills("통합에 포함할 검사", list(MOD_ORDER), format_func=lambda m: MOD_LABEL[m], selection_mode="multi",
+                     key="fusion_mods")
+            if ready and not fusion_ready:
+                md("<div class='req-empty'>통합에 포함할 검사를 하나 이상 선택해 주세요.</div>")
             if fusion_ready:
-                md(f"""<div class='card-label'>AI FUSION DIAGNOSIS &amp; PRESCRIPTIONS</div>
-                    <div class='fusion-top'><div class='fusion-gauge'>{gauge_svg(total_risk, FUSION_BANDS, fusion_color, True, '통합 점수', True)}</div>
+                md(f"""<div class='fusion-top'><div class='fusion-gauge'>{gauge_svg(total_risk, FUSION_BANDS, fusion_color, True, '통합 점수', True)}</div>
                     <div class='fusion-info'><span class='chip chip-{fusion_cls}'>통합 참고치</span>
                     <div class='fusion-label'>{fusion_label}</div>
-                    <div class='panel-sub'>{len(fusion_used)}개 모달리티 규칙 기반 통합 · 정확도 미검증</div></div></div>
+                    <div class='panel-sub'>{len(fusion_used)}개 검사 규칙 기반 통합 · 정확도 미검증</div></div></div>
                     <div class='comment' style='border-left:4px solid {fusion_color};'><b>분석 요약</b><br>{esc(ai_comment)}</div>
                     <div class='card-label'>처방 및 환자 연동 소견</div>""")
                 doctor_memo = st.text_area(
@@ -984,11 +1084,12 @@ with main_col:
                     if linked_pid:
                         def modality(res):
                             return {"id": res["id"], "name": res["name"], "probability": res["prob"], "ci95": res["ci"],
-                                    "judgement": "MDD 패턴 우세" if res["prob"] >= 50 else "대조군 패턴 우세", "basis": res["basis"],
+                                    "judgement": "MDD 유사 패턴" if res["prob"] >= 50 else "건강대조군 유사 패턴", "basis": res["basis"],
                                     "details": [{"item": k, "value": v} for k, v in res["details"]]}
                         report = {
                             "report_id": str(uuid.uuid4())[:8], "sent": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                             "patient_id": linked_pid, "patient_name": (linked_prof or {}).get("name", ""),
+                            "case": {"name": case_name, "group": case_group},
                             "modalities": [modality(results[m]) for m in MOD_ORDER if m in results],
                             "fusion": {"probability": total_risk, "label": fusion_label, "comment": ai_comment,
                                        "included": [r["id"] for r in fusion_used], "validated": False},
@@ -1003,8 +1104,7 @@ with main_col:
                     else:
                         st.warning("연동된 환자가 없어 전송하지 못했습니다.")
             else:
-                md(f"""<div class='card-label'>AI FUSION DIAGNOSIS &amp; PRESCRIPTIONS</div>
-                    <div class='fusion-top'><div class='fusion-gauge'>{gauge_svg(0, FUSION_BANDS, '#B8C2D6', False, '통합 확률', True)}</div>
+                md(f"""<div class='fusion-top'><div class='fusion-gauge'>{gauge_svg(0, FUSION_BANDS, '#B8C2D6', False, '통합 점수', True)}</div>
                     <div class='fusion-info'><span class='chip chip-muted'>분석 대기</span>
                     </div></div>""")
 
