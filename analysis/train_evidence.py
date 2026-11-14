@@ -218,7 +218,7 @@ def run_cortisol(path):
     mdd, ctrl = group_values(X, y, ["Cortisol"])
     final.update(type="logistic", transform="none", labels=["코르티솔"], k=None, C=1.0)
     return {
-        "name": "Cortisol", "label": "코르티솔", "tier": "simulation", "tier_label": "시뮬레이션 데이터", "n_mdd": int(y.sum()), "n_control": int((1 - y).sum()),
+        "name": "Cortisol", "label": "코르티솔", "tier": "simulation", "tier_label": "참고용 데이터", "n_mdd": int(y.sum()), "n_control": int((1 - y).sum()),
         "source": "MDD_Simulation_Dataset.csv (시뮬레이션 자료, 실제 환자 코호트가 아님)",
         "limits": ["시뮬레이션 데이터라 MDD 연관성의 근거로 인용할 수 없음", "측정 단위와 채혈 시각 정보 없음", "GAF, HAM-D는 MDD 군에만 있어 정보 누수 방지를 위해 제외"],
         "n_tested": len(rows), "n_fdr05": sum(r["q"] < .05 for r in rows), "associations": compact(rows, 12),
@@ -244,7 +244,7 @@ def run_cytokine(path):
     rows.sort(key=lambda r: -r["H"])
     top = rows[:5]
     return {
-        "name": "Cytokine", "label": "사이토카인", "tier": "summary", "tier_label": "논문 요약통계 기반", "n_mdd": None, "n_control": None,
+        "name": "Cytokine", "label": "사이토카인", "tier": "summary", "tier_label": "참고용 데이터", "n_mdd": None, "n_control": None,
         "source": "STable1_MDD_HC_only.xlsx (논문 보충표의 군별 평균±SD, H값, q값)",
         "limits": ["개인별 값이 없어 교차검증·AUC·신뢰구간 산출 불가", "표본 수와 원 논문 정보 미기재: 출처 확인 필요", "정규분포와 마커 간 독립을 가정하며 실제 농도 분포는 치우침이 큼",
                    "H값은 원 논문의 다군 비교 결과일 수 있고, r은 d에서 환산한 추정치"],
