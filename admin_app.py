@@ -13,8 +13,8 @@ from datetime import datetime
 import streamlit as st
 from dotenv import load_dotenv
 
-from maeumi_common import (DATA_FILES, DEFAULT_SETTINGS, MOD_LABEL, SEEN_FILE, SETTINGS_NAME, get_secret,
-                           load_settings, save_settings, shared_path)
+from maeumi_common import (DATA_FILES, DEFAULT_SETTINGS, DX_FILE, LAB_FILE, MOD_LABEL, SEEN_FILE, SETTINGS_NAME, get_secret,
+                           load_settings, research_dataset, save_settings, seed_demo_patients, shared_path)
 
 load_dotenv()
 st.set_page_config(page_title="관리자", page_icon="🛠️", layout="centered")
@@ -92,7 +92,10 @@ st.markdown(
     f"<div><span>수락 대기 상담</span><b>{pending}</b></div>"
     f"<div><span>PHQ-9 기록</span><b>{count('checkins.json')}</b></div>"
     f"<div><span>소견 받은 환자</span><b>{count('diagnosis_report.json')}</b></div>"
-    f"<div><span>대기 중 요청 줄</span><b>{count('consultation_req.txt')}</b></div></div>",
+    f"<div><span>대기 중 요청 줄</span><b>{count('consultation_req.txt')}</b></div>"
+    f"<div><span>검사 기록 보유 환자</span><b>{count(LAB_FILE)}</b></div>"
+    f"<div><span>임상 진단 기록</span><b>{count(DX_FILE)}</b></div>"
+    f"<div><span>연구 데이터 (동의·가명)</span><b>{len(research_dataset()[0])}</b></div></div>",
     unsafe_allow_html=True)
 st.caption("환자 기록은 리셋하기 전까지 유지돼요. 단, Streamlit Cloud는 앱 재시작·잠듦·재배포 때 저장 공간이 초기화되니 중요한 시점에는 백업을 받아 두세요.")
 
@@ -100,6 +103,14 @@ tab_data, tab_settings = st.tabs(["환자 기록", "시연 설정"])
 
 # ---------------- 환자 기록: 백업 · 리셋 · 환자별 삭제 · 복원 ----------------
 with tab_data:
+    st.markdown("#### 시연 환자")
+    st.caption("예시환자 A~F 6명(MDD 3 · 비MDD 3)을 만들어요. 각자 검사 기록 1회, 의사 임상 진단, PHQ-9 3회가 들어가고, "
+               "A·B·D·E는 연구 활용에 동의, C·F는 미동의로 만들어져요. 이미 있는 환자는 건너뛰어요.")
+    if st.button("시연 환자 6명 만들기", type="primary", icon=":material/group_add:"):
+        n_made = seed_demo_patients()
+        flash(f"시연 환자 {n_made}명을 만들었어요." if n_made else "시연 환자가 이미 모두 있어요.")
+        st.rerun()
+
     st.markdown("#### 백업")
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
@@ -146,7 +157,7 @@ with tab_data:
     if st.button("전체 리셋", type="primary", disabled=not sure, icon=":material/restart_alt:"):
         for name in DATA_FILES:
             write_any(name, [] if name.endswith(".txt") else ({} if name in ("patient_profile.json", "garden.json",
-                      "bio_report.json", "diagnosis_report.json") else []))
+                      "bio_report.json", "diagnosis_report.json", LAB_FILE, DX_FILE) else []))
         if os.path.exists(SEEN_FILE):
             os.remove(SEEN_FILE)
         flash("모든 환자 기록을 리셋했어요.")
@@ -191,11 +202,15 @@ with tab_settings:
         tools = st.toggle("사이드바 시연 도구 보이기 (다른 환자의 알림·기록이 보이고 지울 수 있어요. 공개 시연 중에는 끄세요)",
                           value=s["patient_tools"])
         risk = st.toggle("대화 아래 '위험도' 표시 보이기", value=s["show_risk_debug"])
+        st.markdown("#### 시연 데이터")
+        seed = st.toggle("환자가 한 명도 없으면 시연 환자 6명을 자동으로 만들기 (앱 재시작·전체 리셋 후 의료진 화면을 열 때)",
+                         value=s["auto_seed_demo"])
         if st.form_submit_button("설정 저장", type="primary"):
             save_settings({"doctor_login": login, "doctor_id": doc_id.strip() or DEFAULT_SETTINGS["doctor_id"],
                            "doctor_name": doc_name.strip() or DEFAULT_SETTINGS["doctor_name"],
                            "doctor_dept": doc_dept.strip() or DEFAULT_SETTINGS["doctor_dept"],
-                           "fusion_default": fusion_default, "patient_tools": tools, "show_risk_debug": risk})
+                           "fusion_default": fusion_default, "patient_tools": tools, "show_risk_debug": risk,
+                           "auto_seed_demo": seed})
             flash("설정을 저장했어요. 새로 여는 화면부터 적용돼요.")
             st.rerun()
     if st.button("설정을 기본값으로 되돌리기"):
@@ -203,7 +218,7 @@ with tab_settings:
         flash("설정을 기본값으로 되돌렸어요.")
         st.rerun()
     st.caption("설정도 앱이 재시작되면 기본값으로 돌아가요. 기본값: 로그인 화면 켜짐 · 홍길동(doctor01) · 4개 검사 모두 포함 · "
-               "환자 시연 도구 숨김 · 위험도 표시 켜짐")
+               "환자 시연 도구 숨김 · 위험도 표시 켜짐 · 시연 환자 자동 생성 켜짐")
 
 st.divider()
-st.markdown("💙 [환자용 화면으로](/) · 🩺 [의료진 화면으로](/doctor)")
+st.markdown("💙 [환자용 화면으로](/) · 🩺 [의료진 화면으로](/doctor) · 🔬 [연구 모드](/research)")

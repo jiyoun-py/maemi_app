@@ -22,7 +22,7 @@ import anthropic
 import edge_tts
 from PIL import Image
 
-from maeumi_common import load_settings
+from maeumi_common import CONSENT_VERSION, load_settings
 
 # ============ 기본 설정 ============
 load_dotenv()
@@ -483,11 +483,17 @@ def publish_profile():
         v = st.session_state.get(key) or 0
         return int(v) if v else None
     prof = {"name": PATIENT["name"], "age": num("user_age"), "sex": st.session_state.get("user_sex") or None,
-            "height_cm": num("user_height"), "weight_kg": num("user_weight")}
+            "height_cm": num("user_height"), "weight_kg": num("user_weight"), "consent": st.session_state.get("consent")}
     sig = json.dumps(prof, sort_keys=True, ensure_ascii=False)
     if sig == st.session_state.get("profile_sig") and _time.time() - st.session_state.get("profile_pub_t", 0) < 20:
         return
     data = load_dict(PROFILE_FILE)
+    old = data.get(PATIENT["id"]) or {}
+    for k in ("age", "sex", "height_cm", "weight_kg", "consent"):     # 비워 둔 항목은 이전에 저장된 값을 유지 (예: 시연 환자)
+        if prof.get(k) is None and old.get(k) is not None:
+            prof[k] = old[k]
+    if old.get("demo"):
+        prof["demo"] = True
     prof["updated"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")      # 가장 최근에 사용한 환자가 '연동 환자'
     data[PATIENT["id"]] = prof
     with open(PROFILE_FILE, "w", encoding="utf-8") as f:
@@ -664,6 +670,47 @@ PATIENT = {
     "note": "최근 7일간 수면 시간이 줄고 취침이 늦어졌으며 활동량과 햇빛 노출이 감소함",
 }
 SAFE_NAME = html.escape(PATIENT["name"])
+
+# ============ 동의 (서비스 이용·의료진 연계 필수, 연구 활용 선택) ============
+# 저장된 동의가 있으면(같은 이름으로 다시 들어온 경우) 다시 묻지 않아요. 연구 활용은 설정에서 언제든 철회할 수 있어요.
+if "consent" not in st.session_state:
+    st.session_state.consent = (load_dict(PROFILE_FILE).get(PATIENT["id"]) or {}).get("consent")
+if not (st.session_state.consent or {}).get("service"):
+    st.markdown(
+        f"""<div class="app-header"><div class="brand"><div class="logo">{LOGO_SVG}</div>
+        <div><div class="app-name">마음이</div><div class="app-sub">MDD 통합 케어 · 환자용</div></div></div></div>
+        <div class="card"><div class="card-title">{SAFE_NAME}님, 시작하기 전에 확인해 주세요</div>
+        <div class="card-why">마음이는 담당 의료진과 정보를 연계하는 보조 케어 서비스예요. 아래 내용을 읽고 동의해 주세요.
+        (대회 시연용 화면이며, 실제 서비스에서는 기관의 동의서 양식과 IRB 심의를 따라요.)</div></div>""",
+        unsafe_allow_html=True)
+    with st.form("consent_form"):
+        st.markdown("**[필수] 서비스 이용 및 담당 의료진과의 정보 연계**")
+        st.caption("수집 항목: 이름(별명), 나이·성별·키·몸무게(입력한 경우), PHQ-9 응답, 상담 예약, 대화 중 위험 신호와 그 직전 대화 일부. "
+                   "목적: 담당 의료진의 진료와 위기 대응. 보관: 서비스 이용 기간 동안.")
+        need = st.checkbox("위 내용에 동의합니다 (필수)")
+        st.markdown("**[선택] 바이오마커 연구 활용**")
+        st.caption("검사 결과·의사가 기록한 진단·나이대·성별을 이름 없이 가명 코드로 바꿔 우울증 바이오마커 연구에 활용해요. "
+                   "대화 내용은 포함하지 않아요. 동의하지 않아도 서비스 이용에는 영향이 없고, 설정에서 언제든 철회할 수 있어요.")
+        opt = st.checkbox("연구 활용에 동의합니다 (선택)", value=False)
+        go = st.form_submit_button("동의하고 시작하기", type="primary", use_container_width=True)
+    if go:
+        if need:
+            st.session_state.consent = {"service": True, "research": bool(opt), "version": CONSENT_VERSION,
+                                         "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+            st.session_state.profile_sig = None          # 동의 내용을 의료진 화면에 바로 반영
+            st.rerun()
+        st.error("필수 항목에 동의해야 마음이를 사용할 수 있어요.")
+    st.stop()
+
+
+def set_research_consent():
+    c = dict(st.session_state.consent or {})
+    c.update({"research": bool(st.session_state.research_toggle), "version": CONSENT_VERSION,
+              "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
+    st.session_state.consent = c
+    st.session_state.profile_sig = None
+    st.session_state.settings_msg = ("연구 활용에 동의했어요." if c["research"]
+                                     else "연구 활용 동의를 철회했어요. 이후 연구 데이터에서 제외돼요.")
 
 # 의사에게 함께 전달할 웨어러블 요약 (JSON 저장용으로 숫자 형변환)
 WEARABLE_SUMMARY = {
@@ -1737,6 +1784,11 @@ with hc2.popover(f"{PATIENT['name']}님", icon=":material/account_circle:", use_
                   type="primary" if st.session_state.user_sex == _v else "secondary")
     st.number_input("키 (cm)", min_value=0, max_value=250, step=1, key="user_height")
     st.number_input("몸무게 (kg)", min_value=0, max_value=300, step=1, key="user_weight")
+    st.markdown("**동의 관리**")
+    if "research_toggle" not in st.session_state:
+        st.session_state.research_toggle = bool((st.session_state.consent or {}).get("research"))
+    st.toggle("바이오마커 연구 활용 동의 (선택)", key="research_toggle", on_change=set_research_consent)
+    st.caption("검사 결과·진단·나이대·성별만 가명 코드로 연구에 쓰여요. 대화 내용은 포함되지 않아요. 끄면 연구 데이터에서 제외돼요.")
     st.caption("입력하지 않아도 괜찮아요. 입력한 내용은 담당 의료진 화면에만 표시돼요.")
 
 publish_profile()

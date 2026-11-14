@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from maeumi_common import MOD_LABEL, load_settings
+from maeumi_common import DX_FILE, LAB_FILE, MOD_LABEL, load_settings, seed_demo_patients
 
 st.set_page_config(
     page_title="MDD Clinical Decision Support System",
@@ -595,6 +595,14 @@ def svg_roc(perf, w=440, h=262):
     return "".join(o)
 
 
+def consent_chip(prof):
+    c = (prof or {}).get("consent") or {}
+    if not c:
+        return "<span class='chip chip-muted'>동의 기록 없음</span>"
+    return ("<span class='chip chip-ok'>연구 활용 동의</span>" if c.get("research")
+            else "<span class='chip chip-muted'>연구 미동의</span>")
+
+
 def profile_html(prof, care_chip, phq_chip):
     if prof:
         name = prof.get("name") or "-"
@@ -685,6 +693,13 @@ GROUP_COLOR = {"생활 리듬": "#4F6BD3", "몸의 신호": "#7C93E8", "생물�
 st.session_state.link_sig = link_signature()
 
 PATIENTS = list_patients()
+if not PATIENTS and SETTINGS.get("auto_seed_demo"):      # 저장 공간이 비어 있으면 시연 환자 6명을 자동으로 만들어요
+    try:
+        if seed_demo_patients():
+            PATIENTS = list_patients()
+            st.session_state.link_sig = link_signature()
+    except Exception:
+        pass
 PROFILES = dict(PATIENTS)
 if st.session_state.get("sel_pid") not in PROFILES:       # 처음에는 가장 최근에 앱을 사용한 환자
     st.session_state.sel_pid = PATIENTS[0][0] if PATIENTS else None
@@ -746,6 +761,33 @@ def select_patient(pid):
     st.session_state.sel_pid = pid
 
 
+DX_OPTIONS = ["미기록", "MDD", "비MDD", "판단 보류"]
+
+
+def save_dx(pid):
+    """의사가 직접 판단한 임상 진단(AI 결과와 별개) → 연구 데이터의 정답 라벨"""
+    dx_all_ = read_json(DX_FILE, {}) or {}
+    choice = st.session_state.get(f"dx_{pid}", "미기록")
+    hamd = st.session_state.get(f"hamd_{pid}")
+    if choice == "미기록" and hamd is None:
+        dx_all_.pop(pid, None)
+    else:
+        dx_all_[pid] = {"dx": choice, "hamd": None if hamd is None else int(hamd),
+                        "updated": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "by": SETTINGS["doctor_name"]}
+    write_json(DX_FILE, dx_all_)
+
+
+def delete_lab(pid, rec_id):
+    labs_ = read_json(LAB_FILE, {}) or {}
+    labs_[pid] = [r for r in labs_.get(pid, []) if r.get("id") != rec_id]
+    write_json(LAB_FILE, labs_)
+    st.session_state.flash = "선택한 검사 기록을 삭제했습니다."
+
+
+def open_research():
+    st.session_state.go_research = True
+
+
 def register_schedule(pid, pname):
     """신규 일정 등록: 선택한 환자에게 등록하고 결과를 알려요."""
     d, kind = str(st.session_state.sel_date), st.session_state.reg_type
@@ -786,6 +828,13 @@ for a in all_appts:
     if a.get("status") != "confirmed" and a.get("date", "") >= date.today().isoformat():
         n_waiting[a.get("patient_id")] += 1
 last_phq = {c.get("patient_id"): c.get("total") for c in all_checkins}
+labs_all = read_json(LAB_FILE, {}) or {}
+dx_all = read_json(DX_FILE, {}) or {}
+if st.session_state.pop("go_research", False):
+    try:
+        st.switch_page("research_app.py")
+    except Exception:
+        st.session_state.flash = "연구 모드는 streamlit_app.py로 실행했을 때 열 수 있어요."
 
 # 새 상담 요청 / 긴급 알림이 오면 화면 우측 상단에 팝업(토스트)으로 알려요
 req_keys = [f"{r['date']}|{r['time']}|{r['reason']}" for r in current_requests]
@@ -814,6 +863,8 @@ with right_col:
                     f"<div class='panel-sub'>ID {esc(SETTINGS['doctor_id'])}</div>", unsafe_allow_html=True)
         if SETTINGS["doctor_login"]:
             a2.button("", key="logout", on_click=logout, width="stretch", icon=":material/logout:", help="로그아웃")
+        st.button("연구 모드 (바이오마커 탐색)", key="to_research", on_click=open_research, width="stretch",
+                  icon=":material/science:")
 
     # 0) 환자 목록: 환자 앱을 사용한 모든 환자 중 한 명을 골라 살펴봐요
     with card("patients"):
@@ -828,6 +879,10 @@ with right_col:
                 badges.append(f"요청 {n_waiting[pid]}")
             if last_phq.get(pid) is not None:
                 badges.append(f"PHQ {last_phq[pid]}")
+            if labs_all.get(pid):
+                badges.append(f"검사 {len(labs_all[pid])}")
+            if prof.get("demo"):
+                badges.append("시연")
             label = (prof.get("name") or pid) + (" · " + " · ".join(badges) if badges else "")
             st.button(label, key=f"pt_{pid}", on_click=select_patient, args=(pid,), width="stretch",
                       type="primary" if pid == linked_pid else "secondary",
@@ -842,8 +897,22 @@ with right_col:
     phq_chip = ""
     if my_checkins:
         phq_chip = f"<span class='chip chip-info'>PHQ-9 {my_checkins[-1]['total']}점</span>"
+    if linked_pid:
+        care_chip += consent_chip(linked_prof) + ("<span class='chip chip-warn'>시연 환자</span>" if linked_prof.get("demo") else "")
     with card("profile"):
         md(f"<div class='card-label'>환자 프로필</div>{profile_html(linked_prof, care_chip, phq_chip)}")
+        if linked_pid:
+            my_dx = dx_all.get(linked_pid, {})
+            dkey, hkey = f"dx_{linked_pid}", f"hamd_{linked_pid}"
+            if dkey not in st.session_state:
+                st.session_state[dkey] = my_dx.get("dx", "미기록") if my_dx.get("dx") in DX_OPTIONS else "미기록"
+            if hkey not in st.session_state:
+                st.session_state[hkey] = my_dx.get("hamd")
+            d1, d2 = st.columns([1.3, 1])
+            d1.selectbox("임상 진단 (의사 판단)", DX_OPTIONS, key=dkey, on_change=save_dx, args=(linked_pid,))
+            d2.number_input("HAM-D", min_value=0, max_value=52, step=1, key=hkey, on_change=save_dx, args=(linked_pid,),
+                            placeholder="선택")
+            md("<div class='foot'>AI 결과와 별개로 의사가 판단해 기록해요. 연구 활용에 동의한 환자는 가명으로 연구 데이터에 포함돼요.</div>")
 
     # 2) 실시간 상담 요청
     with card("requests"):
@@ -902,11 +971,12 @@ with right_col:
         md("<div class='card-label'>환자 데이터 업로드</div>")
         uploaded_file = st.file_uploader("환자 파일 업로드", type=["csv", "xlsx"], label_visibility="collapsed",
                                          key=f"upload_{linked_pid}")     # 환자를 바꾸면 업로드도 새로 시작
-        md("<div class='req-empty'>한 행이 한 사례예요. 여러 행을 올리면 사례를 넘겨 보며 비교할 수 있어요.</div>")
+        target_name = esc(linked_prof.get("name", "")) if linked_pid else "연동 환자 없음 (저장되지 않음)"
+        md(f"<div class='req-empty'>올린 파일은 <b>{target_name}</b>의 검사 기록으로 저장돼요. 한 행이 검사 1회차예요.</div>")
         demo_path = os.path.join(DEMO_DIR, "demo_cases.csv")
         if os.path.exists(demo_path):
             with open(demo_path, "rb") as demo_file:
-                st.download_button("시연 사례 파일 (MDD 3 · 건강대조군 3)", demo_file.read(), file_name="demo_cases.csv",
+                st.download_button("시연 검사 파일 (6행 형식 예시)", demo_file.read(), file_name="demo_cases.csv",
                                    mime="text/csv", width="stretch", icon=":material/download:")
 
 # ------------------------- 메인: 분석 데이터 -------------------------
@@ -920,15 +990,25 @@ if uploaded_file is not None:
 
 
 def case_info(df, i):
-    """i번째 행의 사례 이름과 구분 (선택 컬럼: 사례명/case_name, 구분/group)"""
+    """i번째 행의 이름과 구분 (선택 컬럼: 사례명/case_name, 구분/group). 이름이 없으면 빈 값"""
     row = df.iloc[i]
     get = lambda *cols: next((str(row[c]).strip() for c in cols if c in df.columns and pd.notna(row[c]) and str(row[c]).strip()), "")
-    return get("사례명", "case_name", "name") or f"사례 {i + 1}", get("구분", "group", "label")
+    return get("사례명", "case_name", "name"), get("구분", "group", "label")
 
 
-def score_case(df, i):
-    """i번째 사례를 4개 모달리티로 계산해요. 필요한 값이 빠진 모달리티는 계산하지 않아요(임의로 채우지 않음)."""
-    vals = patient_values(df.iloc[[i]].reset_index(drop=True))
+def df_records(df, start=0):
+    """표의 각 행 → 검사 기록 (값은 숫자 컬럼만)"""
+    out = []
+    for i in range(len(df)):
+        nm, grp = case_info(df, i)
+        out.append({"id": uuid.uuid4().hex[:8], "date": datetime.now().strftime("%Y-%m-%d %H:%M"),
+                    "label": nm or f"{start + i + 1}회차 검사", "group": grp, "file": getattr(uploaded_file, "name", ""),
+                    "values": patient_values(df.iloc[[i]].reset_index(drop=True))})
+    return out
+
+
+def score_values(vals):
+    """검사값을 4개 모달리티로 계산해요. 필요한 값이 빠진 모달리티는 계산하지 않아요(임의로 채우지 않음)."""
     res_, miss_ = {}, {}
     for mid in MOD_ORDER:
         r_, m_ = score_modality(mid, vals)
@@ -952,12 +1032,29 @@ if "fusion_mods" not in st.session_state:
     st.session_state.fusion_mods = [m for m in SETTINGS["fusion_default"] if m in MOD_ORDER]
 fusion_mods = st.session_state.fusion_mods or []
 
-# 여러 행 = 여러 사례. 넘기기 버튼으로 보고 있는 사례를 바꿔요.
-n_cases = len(patient_df) if patient_df is not None else 0
-upload_sig = f"{getattr(uploaded_file, 'name', '')}:{getattr(uploaded_file, 'size', '')}:{n_cases}"
-if st.session_state.get("upload_sig") != upload_sig:
-    st.session_state.upload_sig = upload_sig
-    st.session_state.case_idx = 0
+# 업로드한 파일은 선택한 환자의 검사 기록으로 저장해요(한 번만). 다음부터는 환자를 고르면 자동으로 불러와요.
+if patient_df is not None and not patient_df.empty and linked_pid:
+    save_sig = f"{linked_pid}:{getattr(uploaded_file, 'name', '')}:{getattr(uploaded_file, 'size', '')}:{len(patient_df)}"
+    if st.session_state.get("saved_upload") != save_sig:
+        labs_all = read_json(LAB_FILE, {}) or {}
+        mine = labs_all.setdefault(linked_pid, [])
+        mine.extend(df_records(patient_df, start=len(mine)))
+        write_json(LAB_FILE, labs_all)
+        st.session_state.saved_upload = save_sig
+        st.toast(f"{linked_prof.get('name', '')}님의 검사 기록 {len(patient_df)}건을 저장했습니다.", icon=":material/save:")
+if linked_pid:
+    records = labs_all.get(linked_pid, [])
+elif patient_df is not None and not patient_df.empty:
+    records = df_records(patient_df)          # 연동 환자가 없으면 저장하지 않고 화면에만 보여줘요
+else:
+    records = []
+
+# 같은 환자의 검사 회차를 넘겨 봐요. 새 기록이 생기면 가장 최근 회차를 보여줘요.
+n_cases = len(records)
+view_sig = f"{linked_pid}:{n_cases}"
+if st.session_state.get("view_sig") != view_sig:
+    st.session_state.view_sig = view_sig
+    st.session_state.case_idx = max(n_cases - 1, 0)
 case_idx = min(st.session_state.get("case_idx", 0), max(n_cases - 1, 0))
 
 
@@ -966,9 +1063,11 @@ def move_case(step):
 
 
 if n_cases:
-    results, missing_by_mod = score_case(patient_df, case_idx)
-    case_name, case_group = case_info(patient_df, case_idx)
+    cur_rec = records[case_idx]
+    results, missing_by_mod = score_values(cur_rec.get("values", {}))
+    case_name, case_group = cur_rec.get("label", ""), cur_rec.get("group", "")
 else:
+    cur_rec = None
     results, missing_by_mod = {}, {m: MODS[m]["model"]["features"] for m in MOD_ORDER}
     case_name, case_group = "", ""
 ready = bool(results)
@@ -999,36 +1098,65 @@ with main_col:
     if upload_failed:
         st.error("파일을 읽지 못했습니다. CSV 또는 XLSX 형식을 확인해 주세요.")
 
-    # 사례 넘기기 + 전체 사례 비교표 (여러 행을 올렸을 때)
-    if n_cases > 1:
-        p1, p2, p3 = st.columns([1, 6, 1])
-        p1.button(":material/chevron_left:", key="case_prev", on_click=move_case, args=(-1,), width="stretch")
-        p3.button(":material/chevron_right:", key="case_next", on_click=move_case, args=(1,), width="stretch")
+    head = "".join(f"<th>{MOD_LABEL[m]}</th>" for m in MOD_ORDER)
+    mods_note = f"통합 점수는 지금 선택한 검사({', '.join(MOD_LABEL[m] for m in fusion_mods) or '없음'})로 계산해요."
+
+    def score_row(vals):
+        res_i, _ = score_values(vals)
+        fus_i, _ = fusion_score(res_i, fusion_mods)
+        probs_i = [res_i[m]["prob"] if m in res_i else np.nan for m in MOD_ORDER]
+        return probs_i, fus_i
+
+    def cells_html(probs_i, fus_i):
+        return ("".join("<td>-</td>" if np.isnan(p) else f"<td>{p:.0f}%</td>" for p in probs_i)
+                + f"<td><b>{'-' if fus_i is None else f'{fus_i}%'}</b></td>")
+
+    # 검사 회차 넘기기 (같은 환자의 경과)
+    if n_cases:
+        p1, p2, p3, p4 = st.columns([1, 6, 1, 1.4])
+        p1.button(":material/chevron_left:", key="case_prev", on_click=move_case, args=(-1,), width="stretch", disabled=n_cases < 2)
+        p3.button(":material/chevron_right:", key="case_next", on_click=move_case, args=(1,), width="stretch", disabled=n_cases < 2)
         grp_chip = (f" <span class='chip chip-{'danger' if 'MDD' in case_group.upper() else 'ok'}'>{esc(case_group)}</span>"
                     if case_group else "")
-        p2.markdown(f"<div class='case-nav'><span class='panel-sub'>사례 {case_idx + 1} / {n_cases}</span> "
-                    f"<b>{esc(case_name)}</b>{grp_chip}</div>", unsafe_allow_html=True)
-        rows_html, by_group = "", defaultdict(list)
-        for i in range(n_cases):
-            res_i, _ = score_case(patient_df, i)
-            nm_i, grp_i = case_info(patient_df, i)
-            fus_i, _ = fusion_score(res_i, fusion_mods)
-            cells = "".join(f"<td>{res_i[m]['prob']:.0f}%</td>" if m in res_i else "<td>-</td>" for m in MOD_ORDER)
-            rows_html += (f"<tr class='{'hl' if i == case_idx else ''}'><td>{esc(nm_i)}</td><td>{esc(grp_i) or '-'}</td>{cells}"
-                          f"<td><b>{'-' if fus_i is None else f'{fus_i}%'}</b></td></tr>")
-            if grp_i:
-                by_group[grp_i].append([res_i[m]["prob"] if m in res_i else np.nan for m in MOD_ORDER] + [np.nan if fus_i is None else fus_i])
-        for grp_name, vals_ in by_group.items():
-            arr_ = np.array(vals_, dtype=float)
-            means = [np.nan if np.isnan(col_).all() else float(np.nanmean(col_)) for col_ in arr_.T]
-            rows_html += (f"<tr class='avg'><td>{esc(grp_name)} 평균</td><td>{len(vals_)}명</td>"
-                          + "".join(f"<td>{'-' if np.isnan(v) else f'{v:.0f}%'}</td>" for v in means) + "</tr>")
-        head = "".join(f"<th>{MOD_LABEL[m]}</th>" for m in MOD_ORDER)
-        with st.expander(f"전체 사례 비교 ({n_cases}건)", expanded=False, icon=":material/compare:"):
-            md(f"<table class='perf'><thead><tr><th>사례</th><th>구분</th>{head}<th>통합</th></tr></thead><tbody>{rows_html}</tbody></table>"
-               f"<div class='foot'>통합 점수는 지금 선택한 검사({', '.join(MOD_LABEL[m] for m in fusion_mods) or '없음'})로 계산해요.</div>")
+        p2.markdown(f"<div class='case-nav'><span class='panel-sub'>검사 {case_idx + 1} / {n_cases}</span> "
+                    f"<b>{esc(case_name)}</b><span class='panel-sub'>{esc(cur_rec.get('date', ''))}</span>{grp_chip}</div>",
+                    unsafe_allow_html=True)
+        if linked_pid:
+            p4.button("기록 삭제", key="del_lab", on_click=delete_lab, args=(linked_pid, cur_rec.get("id")), width="stretch",
+                      icon=":material/delete:")
+        if n_cases > 1:
+            rows_html = ""
+            for i, rec in enumerate(records):
+                probs_i, fus_i = score_row(rec.get("values", {}))
+                rows_html += (f"<tr class='{'hl' if i == case_idx else ''}'><td>{esc(rec.get('label', ''))}</td>"
+                              f"<td>{esc(rec.get('date', ''))}</td>{cells_html(probs_i, fus_i)}</tr>")
+            with st.expander(f"검사 회차 비교 ({n_cases}건)", icon=":material/timeline:"):
+                md(f"<table class='perf'><thead><tr><th>회차</th><th>날짜</th>{head}<th>통합</th></tr></thead>"
+                   f"<tbody>{rows_html}</tbody></table><div class='foot'>{mods_note}</div>")
 
-    if patient_df is not None and len(results) < 4:
+    # 환자 간 비교 (각 환자의 가장 최근 검사, 의사가 기록한 임상 진단별 평균)
+    lab_patients = [(pid, prof) for pid, prof in PATIENTS if labs_all.get(pid)]
+    if len(lab_patients) >= 2:
+        rows_html, by_dx = "", defaultdict(list)
+        for pid, prof in lab_patients:
+            probs_i, fus_i = score_row(labs_all[pid][-1].get("values", {}))
+            dxv = (dx_all.get(pid) or {}).get("dx", "미기록")
+            research = "동의" if ((prof.get("consent") or {}).get("research")) else "-"
+            rows_html += (f"<tr class='{'hl' if pid == linked_pid else ''}'><td>{esc(prof.get('name', pid))}</td><td>{esc(dxv)}</td>"
+                          f"<td>{research}</td>{cells_html(probs_i, fus_i)}</tr>")
+            if dxv in ("MDD", "비MDD"):
+                by_dx[dxv].append(probs_i + [np.nan if fus_i is None else fus_i])
+        for dxv in ("MDD", "비MDD"):
+            if by_dx.get(dxv):
+                arr_ = np.array(by_dx[dxv], dtype=float)
+                means = [np.nan if np.isnan(c).all() else float(np.nanmean(c)) for c in arr_.T]
+                rows_html += (f"<tr class='avg'><td>{dxv} 평균</td><td>{len(by_dx[dxv])}명</td><td></td>"
+                              + "".join(f"<td>{'-' if np.isnan(v) else f'{v:.0f}%'}</td>" for v in means) + "</tr>")
+        with st.expander(f"환자 간 비교 ({len(lab_patients)}명 · 최근 검사 기준)", icon=":material/compare:"):
+            md(f"<table class='perf'><thead><tr><th>환자</th><th>임상 진단</th><th>연구</th>{head}<th>통합</th></tr></thead>"
+               f"<tbody>{rows_html}</tbody></table><div class='foot'>임상 진단은 의사가 프로필 카드에서 기록한 값이에요. {mods_note}</div>")
+
+    if records and len(results) < 4:
         lack = ", ".join(f"{MODS[k]['name']} ({', '.join(v[:3])}{' 외' if len(v) > 3 else ''})" for k, v in missing_by_mod.items())
         st.warning(f"필요한 컬럼이 없어 계산하지 않은 항목이 있습니다: {lack}. 형식은 시연 CSV를 참고해 주세요.")
 
@@ -1040,7 +1168,7 @@ with main_col:
         if r_mod:
             col.markdown(quad_html(r_mod["name"], r_mod["prob"], r_mod["details"], note=r_mod["note"]), unsafe_allow_html=True)
         else:
-            wait_note = MODS[mid]["tier_label"] if patient_df is None else f"필요 항목 {len(missing_by_mod[mid])}개 미입력"
+            wait_note = MODS[mid]["tier_label"] if not records else f"필요 항목 {len(missing_by_mod[mid])}개 미입력"
             col.markdown(quad_html(MODS[mid]["name"], 0, MODS[mid]["model"]["labels"][:3], ready=False, note=wait_note), unsafe_allow_html=True)
 
     # 융합 진단
