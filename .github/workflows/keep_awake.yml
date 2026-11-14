@@ -1,0 +1,29 @@
+# 6시간마다 배포 앱을 실제 브라우저로 방문해서 잠들지 않게 해요. (Streamlit Community Cloud는 12시간 방문이 없으면 잠듦)
+# Actions 탭에서 "Run workflow"로 언제든 직접 실행할 수도 있어요.
+name: Keep Streamlit app awake
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"     # 6시간마다 (UTC 기준, 정각 혼잡을 피해 17분)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  visit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install browser
+        run: |
+          pip install playwright==1.48.0
+          python -m playwright install --with-deps chromium
+      - name: Visit the app
+        env:
+          APP_URL: https://maeumi-mdd.streamlit.app/
+        run: python scripts/keep_awake.py
