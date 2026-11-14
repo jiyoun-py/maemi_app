@@ -485,7 +485,7 @@ def quad_html(name, p, details, ready=True, note=""):
             f"<div class='foot'>{esc(note)}</div></div></div></div>")
 
 
-TIER_CHIP = {"data": "ok", "summary": "warn", "simulation": "danger"}
+TIER_CHIP = {"data": "ok", "summary": "warn", "simulation": "warn"}   # 참고용 데이터(요약통계·시뮬레이션)는 같은 표시
 
 
 def fmt_q(row):
@@ -498,7 +498,7 @@ def fmt_q(row):
 def evidence_html(mid):
     """지표별 MDD 연관성(상관 r, 효과크기 d, FDR q)과 자료의 한계를 보여주는 패널"""
     m = MODS[mid]
-    n = f"MDD {m['n_mdd']} · 건강대조군 {m['n_control']}" if m.get("n_mdd") else "표본 수 미기재"
+    n = f"MDD {m['n_mdd']} · 건강대조군 {m['n_control']}" if m.get("n_mdd") else "논문 보충표 · 군별 평균±SD"
     row = lambda a, cls="": (f"<tr class='{cls}'><td>{esc(a['label'])}</td><td>{a['r']:+.2f}</td><td>{a['d']:+.2f}</td><td>{fmt_q(a)}</td></tr>")
     rows = "".join(row(a) for a in m["associations"][:5])
     rows += "".join(row(a, "hl") for a in m.get("summary_markers", []) if a["feature"] in ("alpha_beta", "faa"))
