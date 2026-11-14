@@ -8,7 +8,15 @@
 
 실행: streamlit run streamlit_app.py
 """
+import importlib
+
 import streamlit as st
+
+import maeumi_common
+
+# GitHub에 새 코드를 올리면 서버는 페이지 파일만 새로 읽고, 이미 불러온 공통 파일은 예전 것을 계속 쓸 수 있어요.
+# 매번 공통 파일을 다시 불러와서 재배포 직후에도 새 기능이 바로 동작하게 해요.
+importlib.reload(maeumi_common)
 
 patient = st.Page("app.py", title="마음이", icon="💙", default=True)
 doctor = st.Page("doctor_app.py", title="의료진 CDSS", icon="🩺", url_path="doctor")
