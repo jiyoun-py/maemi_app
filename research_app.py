@@ -21,7 +21,8 @@ st.markdown("""<style>
 .stApp, .stApp p, .stApp label, .stApp li, .stApp button{font-family:'Pretendard','Noto Sans KR','Malgun Gothic',sans-serif !important;}
 .stApp{background:#F4F6FB;}
 [data-testid="stToolbar"], #MainMenu, footer{display:none !important;}
-.block-container{max-width:1400px !important;padding-top:1.2rem !important;}
+header[data-testid="stHeader"]{display:none !important;}
+.block-container, [data-testid="stMainBlockContainer"]{max-width:1400px !important;padding-top:2.2rem !important;}
 .rs-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;}
 .rs-title{font-size:1.6rem;font-weight:800;color:#0F172A;}
 .rs-sub{color:#64748B;font-size:.9rem;}
