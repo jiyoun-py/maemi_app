@@ -485,7 +485,7 @@ def quad_html(name, p, details, ready=True, note=""):
             f"<div class='foot'>{esc(note)}</div></div></div></div>")
 
 
-TIER_CHIP = {"data": "ok", "summary": "warn", "simulation": "warn"}   # 참고용 데이터(요약통계·시뮬레이션)는 같은 표시
+TIER_CHIP = {"data": "ok", "summary": "warn", "simulation": "warn"}   # 집단 통계 기반(요약통계·시뮬레이션)은 같은 표시
 
 
 def fmt_q(row):
