@@ -630,7 +630,7 @@ if not st.session_state.get("user_name"):
     )
     with st.form("name_form"):
         st.markdown("<div class='q-head' style='margin-bottom:6px;'>이름 또는 별명</div>", unsafe_allow_html=True)
-        name_in = st.text_input("이름 또는 별명", max_chars=12, placeholder="예: 지윤", label_visibility="collapsed")
+        name_in = st.text_input("이름 또는 별명", max_chars=12, placeholder="예: 홍길동", label_visibility="collapsed")
         start_ok = st.form_submit_button("시작하기", type="primary", use_container_width=True)
     if start_ok:
         nm = clean_name(name_in)
