@@ -174,8 +174,10 @@ def run_eeg(path):
     final.update(type="logistic", transform="none", labels=[lab[f] for f in final["features"]], k=k, C=c)
     return {
         "name": "EEG", "label": "뇌파 (EEG)", "tier": "data", "tier_label": "개인별 측정값 학습", "n_mdd": int(y.sum()), "n_control": int((1 - y).sum()),
-        "source": "machinelearning_data_EEG.csv (Depressive disorder vs Healthy control)",
-        "limits": ["파일에 원 논문·기관 정보가 없어 출처 확인 필요", "피험자 ID가 없어 반복 측정 여부를 확인할 수 없음", "변수 1,140개 대비 표본 294명: 선택 변수의 재현 연구 필요",
+        "source": "machinelearning_data_EEG.csv: SMG-SNU 보라매병원 EEG Data - Depression Detection (Zenodo, doi:10.5281/zenodo.13690792); "
+                  "원 연구 Park SM et al., Front Psychiatry 2021;12:707581",
+        "source_short": "Park et al., Front Psychiatry 2021 · Zenodo 13690792 (보라매병원)",
+        "limits": ["원 연구는 환자군을 우울장애(depressive disorder, DSM-IV/5 진단)로 분류", "피험자 ID가 없어 반복 측정 여부를 확인할 수 없음", "변수 1,140개 대비 표본 294명: 선택 변수의 재현 연구 필요",
                    "확률은 두 군을 같은 비율로 가정한 값이며 유병률을 반영하지 않음"],
         "n_tested": len(rows), "n_fdr05": sum(r["q"] < .05 for r in rows), "associations": compact(rows, 12), "summary_markers": compact(summary, 20),
         "perf": perf, "model": final, "demo": {"mdd": mdd, "control": ctrl},
@@ -200,7 +202,8 @@ def run_metabolites(path):
     final.update(type="logistic", transform="log2p1", labels=final["features"], k=k, C=c)
     return {
         "name": "Metabolites", "label": "대사체", "tier": "data", "tier_label": "개인별 측정값 학습", "n_mdd": int(y.sum()), "n_control": int((1 - y).sum()),
-        "source": "Metabolomics Workbench ST000062 / AN000100, 혈장 GC-MS (UC Davis WCMC). MDD는 BDI 기준 (CC BY-NC-ND)",
+        "source": "Metabolomics Workbench ST000062 / AN000100 (Project PR000059, doi:10.21228/M8V88F), 혈장 GC-MS (UC Davis WCMC). MDD는 BDI 기준 (CC BY-NC-ND)",
+        "source_short": "Metabolomics Workbench ST000062 (UC Davis · BDI 기준)",
         "limits": ["Group 2(Score 50)=MDD, Group 1(Score 0)=대조는 연구 설명(BDI 기반 MDD 50·대조 50)에서 해석한 것으로 파일에 명시되지 않음",
                    "임상 진단이 아니라 설문(BDI) 기준의 일반인 표본", "표본 97명으로 작아 AUC 변동이 큼", "질량분석 강도값이라 다른 실험실 값과 바로 비교할 수 없음"],
         "n_tested": len(rows), "n_fdr05": sum(r["q"] < .05 for r in rows), "associations": compact(rows, 12),
@@ -219,8 +222,11 @@ def run_cortisol(path):
     final.update(type="logistic", transform="none", labels=["코르티솔"], k=None, C=1.0)
     return {
         "name": "Cortisol", "label": "코르티솔", "tier": "simulation", "tier_label": "집단 통계 기반", "n_mdd": int(y.sum()), "n_control": int((1 - y).sum()),
-        "source": "MDD_Simulation_Dataset.csv (시뮬레이션 자료, 실제 환자 코호트가 아님)",
-        "limits": ["시뮬레이션 데이터라 MDD 연관성의 근거로 인용할 수 없음", "측정 단위와 채혈 시각 정보 없음", "GAF, HAM-D는 MDD 군에만 있어 정보 누수 방지를 위해 제외"],
+        "source": "MDD_Simulation_Dataset.csv: Arinami H et al., Sci Rep 2023;13:1148의 집단 평균·표준편차로 생성한 시뮬레이션 자료 (실제 환자 코호트가 아님)",
+        "source_short": "Arinami et al., Sci Rep 2023 집단 통계 기반 시뮬레이션",
+        "limits": ["시뮬레이션 데이터라 MDD 연관성의 근거로 인용할 수 없음",
+                   "원 연구: 일본 니가타대병원 MDD 129명·대조군 71명, 단위 µg/dL, 오전 6~11시 공복 채혈",
+                   "GAF, HAM-D는 MDD 군에만 있어 정보 누수 방지를 위해 제외"],
         "n_tested": len(rows), "n_fdr05": sum(r["q"] < .05 for r in rows), "associations": compact(rows, 12),
         "perf": perf, "model": final, "demo": {"mdd": mdd, "control": ctrl},
     }
@@ -244,10 +250,13 @@ def run_cytokine(path):
     rows.sort(key=lambda r: -r["H"])
     top = rows[:5]
     return {
-        "name": "Cytokine", "label": "사이토카인", "tier": "summary", "tier_label": "집단 통계 기반", "n_mdd": None, "n_control": None,
-        "source": "STable1_MDD_HC_only.xlsx (논문 보충표의 군별 평균±SD, H값, q값)",
-        "limits": ["개인별 값이 없어 교차검증·AUC·신뢰구간 산출 불가", "표본 수와 원 논문 정보 미기재: 출처 확인 필요", "정규분포와 마커 간 독립을 가정하며 실제 농도 분포는 치우침이 큼",
-                   "H값은 원 논문의 다군 비교 결과일 수 있고, r은 d에서 환산한 추정치"],
+        "name": "Cytokine", "label": "사이토카인", "tier": "summary", "tier_label": "집단 통계 기반", "n_mdd": 127, "n_control": 32,
+        "source": "STable1_MDD_HC_only.xlsx: Poletti S et al., Prog Neuropsychopharmacol Biol Psychiatry 2021;105:110136 "
+                  "보충표 1의 MDD·건강대조군 평균±SD, H값, q값",
+        "source_short": "Poletti et al., Prog Neuropsychopharmacol Biol Psychiatry 2021 (보충표 1)",
+        "limits": ["개인별 값이 없어 교차검증·AUC·신뢰구간 산출 불가", "건강대조군이 32명으로 적고, 원 연구의 주 목적은 양극성장애와 MDD 구분",
+                   "정규분포와 마커 간 독립을 가정하며 실제 농도 분포는 치우침이 큼",
+                   "H값은 원 연구의 3개 군(양극성장애·MDD·대조군) Kruskal–Wallis 결과이며, r은 d에서 환산한 추정치"],
         "n_tested": len(rows), "n_fdr05": sum(r["q_reported"].strip() in ("<.001", "<0.001") or (r["q_reported"].replace(".", "", 1).isdigit() and float(r["q_reported"]) < .05) for r in rows),
         "associations": rows[:12], "perf": None,
         "model": {"type": "gaussian_lr", "transform": "none", "features": [r["feature"] for r in top], "labels": [r["label"] for r in top],
