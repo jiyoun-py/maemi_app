@@ -506,7 +506,8 @@ def evidence_html(mid):
             f"<span class='chip chip-{TIER_CHIP[m['tier']]}'>{esc(m['tier_label'])}</span></div>"
             "<table class='perf'><thead><tr><th>지표</th><th>r</th><th>d</th><th>FDR q</th></tr></thead>"
             f"<tbody>{rows}</tbody></table>"
-            f"<div class='foot'>{m['n_fdr05']}/{m['n_tested']}개 지표 FDR&lt;.05 · {esc(m['limits'][0])}</div></div>")
+            f"<div class='foot'>{m['n_fdr05']}/{m['n_tested']}개 지표 FDR&lt;.05 · {esc(m['limits'][0])}"
+            + (f"<br>출처: {esc(m['source_short'])}" if m.get("source_short") else "") + "</div></div>")
 
 
 def svg_line(xs, series, y0, y1, ticks, w=520, h=210, bands=None, hlines=None, tfmt=None, label_every=1, band_labels=None, mr=16):
