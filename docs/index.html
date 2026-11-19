@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Maeumi</title>
+<meta name="description" content="마음이 · 환자용 앱, 의료진용 CDSS, 시연 영상 바로가기">
+<link rel="icon" type="image/png" href="maeumi_favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lato:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --page:#9DAED6;      /* 바깥 배경 */
+    --column:#B5CFFB;    /* 가운데 칸 배경 (QRFY 페이지와 같은 색) */
+    --card:#FFFFFF;
+    --ink:#220E27;
+    --label:#000000;
+    --muted:#68676C;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{min-height:100%}
+  body{background:var(--page);font-family:'Lato','Pretendard','Apple SD Gothic Neo','Malgun Gothic',sans-serif;color:var(--ink);
+       -webkit-font-smoothing:antialiased}
+  .column{max-width:606px;min-height:100vh;margin:0 auto;background:var(--column);padding:40px 20px 48px}
+  .profile{text-align:center;margin-bottom:40px}
+  .avatar{width:116px;height:116px;border-radius:50%;object-fit:cover;object-position:50% 40%;background:#fff;display:block;margin:0 auto 18px;
+          border:4px solid #fff}
+  h1{font-size:20px;font-weight:600;color:#000;line-height:32px}
+  .sub{font-size:12px;font-weight:600;color:var(--muted);line-height:20px}
+  .group{margin-bottom:24px}
+  .label{font-size:12px;font-weight:600;color:var(--label);line-height:20px;margin:0 0 8px 0}
+  a.card{display:flex;align-items:center;gap:16px;height:66px;padding:0 13px;background:var(--card);border:1px solid transparent;border-radius:4px;
+         color:var(--ink);font-size:14px;font-weight:400;text-decoration:none;transition:transform .12s ease, box-shadow .12s ease}
+  a.card:hover{transform:translateY(-1px);box-shadow:0 4px 14px rgba(47,63,143,.15)}
+  a.card:focus-visible{outline:3px solid #2F3F8F;outline-offset:2px}
+  a.card img{width:40px;height:40px;border-radius:4px;flex:none;object-fit:cover}
+  a.card span{flex:1;min-width:0}
+  a.card .arrow{flex:none;color:#7C8DB8;font-size:18px}
+  .hint{font-size:11.5px;color:#3C4A75;margin:6px 2px 0}
+  footer{margin-top:36px;text-align:center;font-size:11px;color:#4B5A86;line-height:18px}
+  @media (max-width:640px){
+    body{background:var(--column)}
+    .column{padding:32px 16px 40px}
+  }
+</style>
+</head>
+<body>
+  <main class="column">
+    <section class="profile">
+      <img class="avatar" src="maeumi_main.webp" alt="마음이 캐릭터">
+      <h1>Maeumi</h1>
+      <p class="sub">마음이</p>
+    </section>
+
+    <div class="group">
+      <p class="label">환자용</p>
+      <a class="card" href="https://maeumi-mdd.streamlit.app/">
+        <img src="maeumi_avatar.png" alt=""><span>Maeumi_환자용</span><b class="arrow" aria-hidden="true">›</b>
+      </a>
+    </div>
+
+    <div class="group">
+      <p class="label">의료진용</p>
+      <a class="card" href="https://maeumi-mdd.streamlit.app/doctor">
+        <img src="maeumi_avatar.png" alt=""><span>Maeumi CDSS_의료진용</span><b class="arrow" aria-hidden="true">›</b>
+      </a>
+      <p class="hint">시연용 계정(doctor01)이 미리 입력되어 있어요. 로그인 버튼만 누르면 돼요.</p>
+    </div>
+
+    <div class="group">
+      <p class="label">시연 영상</p>
+      <a class="card" href="https://youtu.be/DU1ZlGmR_QE">
+        <img src="maeumi_avatar.png" alt=""><span>Maeumi_시연 영상</span><b class="arrow" aria-hidden="true">›</b>
+      </a>
+    </div>
+
+    <footer>
+      넌 웃는 게 더 예뻐 · 바이오헬스 X AI 융합 경진대회<br>
+      앱이 잠들어 있으면 처음 열 때 30초 정도 걸릴 수 있어요.
+    </footer>
+  </main>
+</body>
+</html>
